@@ -1,5 +1,3 @@
-torch
-torchvision
 setuptools==59.5.0
 pyquaternion
 plyfile
@@ -17,4 +15,5 @@ scipy
 pymcubes
 trimesh
 dearpygui
+testresources
 git+https://github.com/openai/CLIP.git
