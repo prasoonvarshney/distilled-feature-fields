@@ -10,8 +10,12 @@ https://user-images.githubusercontent.com/9245278/198859321-9258f101-de76-422a-9
 Setup
 ```
 # assume cuda 11.1
-pip install torch==1.10.2+cu111 torchvision==0.11.3+cu111 --extra-index-url https://download.pytorch.org/whl/cu111 --no-cache-dir
-pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.2+cu111.html
+# pip install torch==1.10.2+cu111 torchvision==0.11.3+cu111 --extra-index-url https://download.pytorch.org/whl/cu111 --no-cache-dir
+# pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.2+cu111.html
+
+# assume cuda 11.7
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117 --no-cache-dir
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.13.1+cu117.html
 
 pip install -r requirements.txt
 pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
