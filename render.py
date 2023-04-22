@@ -62,7 +62,7 @@ if __name__ == "__main__":
             elif op["edit_type"] == "color_func":
                 edit_dict["color_func"] = eval(op["func_str"])
             else:
-                raise NotImplementedError
+                pass
     else:
         model.query_features = None
         edit_dict = {}
@@ -75,8 +75,24 @@ if __name__ == "__main__":
         downsample=hparams.downsample,
     )
 
+    edit_description = ""
+    if hparams.edit_config is not None:
+        edit_description = (
+            f"""__edittype_{edit_config["edit"]["operations"][0]["edit_type"]}""" +
+            f"""__query_{"-".join(edit_config["query"]["texts"])}""" + 
+            f"""__target_{"-".join([str(x) for x in edit_config["query"]["positive_ids"]])}"""
+        )
+
+    output_directory = "./renders/default"
+    if hparams.freenerf_mask:
+        output_directory = "./renders/freenerf"
+    os.makedirs(output_directory, exist_ok=True)
+
+    output_file_name = f"cliptext_{hparams.clipnerf_text}{edit_description}.gif"
+
     # start
     directions = dataset.directions.cuda()
+    images = []
     for img_idx in tqdm(range(len(dataset))):
         poses = dataset[img_idx]["pose"].cuda()
         rays_o, rays_d = get_rays(directions, poses)
@@ -86,4 +102,5 @@ if __name__ == "__main__":
         w, h = dataset.img_wh
         image = results["rgb"].reshape(h, w, 3)
         image = (image.cpu().numpy() * 255).astype(np.uint8)
-        imageio.imsave(os.path.join("./", f"rendered_{img_idx:03d}.png"), image)  # TODO: cv2
+        images.append(image)
+    imageio.mimsave(os.path.join(output_directory, output_file_name), images, fps=15)  # TODO: cv2

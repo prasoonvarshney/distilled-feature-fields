@@ -8,7 +8,7 @@ MAX_SAMPLES = 1024
 NEAR_DISTANCE = 0.01
 
 
-def render(model, rays_o, rays_d, **kwargs):
+def render(model, rays_o, rays_d, mask=None, **kwargs):
     """
     Render rays by
     1. Compute the intersection of the rays with the scene bounding box
@@ -33,7 +33,7 @@ def render(model, rays_o, rays_d, **kwargs):
     else:
         render_func = __render_rays_train
 
-    results = render_func(model, rays_o, rays_d, hits_t, **kwargs)
+    results = render_func(model, rays_o, rays_d, hits_t, mask=mask, **kwargs)
     for k, v in results.items():
         if kwargs.get('to_cpu', False):
             v = v.cpu()
@@ -44,7 +44,7 @@ def render(model, rays_o, rays_d, **kwargs):
 
 
 @torch.no_grad()
-def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
+def __render_rays_test(model, rays_o, rays_d, hits_t, mask=None, **kwargs):
     """
     Render rays by
 
@@ -95,7 +95,7 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
 
         sigmas = torch.zeros(len(xyzs), device=device)
         rgbs = torch.zeros(len(xyzs), 3, device=device)
-        _sigmas, _rgbs = model(xyzs[valid_mask], dirs[valid_mask], skip_feature=True, **kwargs)
+        _sigmas, _rgbs = model(xyzs[valid_mask], dirs[valid_mask], skip_feature=True, mask=mask, **kwargs)
 
         if kwargs.get("edit_dict", {}):
             _scores = model.calculate_selection_score_from_xyz(xyzs[valid_mask])
@@ -154,7 +154,7 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
 
 
 @torch.cuda.amp.autocast()
-def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
+def __render_rays_train(model, rays_o, rays_d, hits_t, mask=None, **kwargs):
     """
     Render rays by
     1. March the rays along their directions, querying @density_bitfield
@@ -165,6 +165,7 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
     3. Use volume rendering to combine the result (front to back compositing
        and early stop the ray if its transmittance is below a threshold)
     """
+    
     exp_step_factor = kwargs.get('exp_step_factor', 0.)
     results = {}
 
@@ -177,7 +178,7 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
     for k, v in kwargs.items(): # supply additional inputs, repeated per ray
         if isinstance(v, torch.Tensor):
             kwargs[k] = torch.repeat_interleave(v[rays_a[:, 0]], rays_a[:, 2], 0)
-    sigmas, rgbs = model(xyzs, dirs, skip_feature=True, **kwargs)
+    sigmas, rgbs = model(xyzs, dirs, skip_feature=True, mask=mask, **kwargs)
 
     (results['vr_samples'], # volume rendering effective samples
     results['opacity'], results['depth'], results['rgb'], results['ws']) = \

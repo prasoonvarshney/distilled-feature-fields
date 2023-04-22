@@ -40,7 +40,7 @@ from pytorch_lightning.callbacks import TQDMProgressBar, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.distributed import all_gather_ddp_if_available
 
-from utils import slim_ckpt, load_ckpt
+from utils import slim_ckpt, load_ckpt, get_freq_reg_mask
 
 import warnings; warnings.filterwarnings("ignore")
 
@@ -55,6 +55,15 @@ def depth2img(depth):
                                   cv2.COLORMAP_TURBO)
 
     return depth_img
+
+
+def set_random_seed_for_everything(seed: int):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
 
 
 class NeRFSystem(LightningModule):
@@ -84,6 +93,11 @@ class NeRFSystem(LightningModule):
             torch.zeros(self.model.cascades, G**3))
         self.model.register_buffer('grid_coords',
             create_meshgrid3d(G, G, G, False, dtype=torch.int32).reshape(-1, 3))
+
+        if hparams.freenerf_mask:
+            print("Using freenerf frequency regularization")
+        else:
+            print("NOT Using freenerf frequency regularization")
 
         # edit
         if hparams.edit_config is not None or hparams.clipnerf_text is not None:
@@ -174,7 +188,7 @@ class NeRFSystem(LightningModule):
             # losses['cliploss_gt'] = clip_loss_gt.mean()
         return losses
 
-    def forward(self, batch, split, detach_geometry=False):
+    def forward(self, batch, split, mask=None, detach_geometry=False):
         if split=='train':
             poses = self.poses[batch['img_idxs']]
             directions = self.directions[batch['pix_idxs']]
@@ -199,7 +213,8 @@ class NeRFSystem(LightningModule):
         if split=='test':
             kwargs['render_feature'] = True
 
-        return render(self.model, rays_o, rays_d, **kwargs)
+
+        return render(self.model, rays_o, rays_d, mask=mask, **kwargs)
 
     def setup(self, stage):
         dataset = dataset_dict[self.hparams.dataset_name]
@@ -268,6 +283,13 @@ class NeRFSystem(LightningModule):
                                         self.train_dataset.img_wh)
 
     def training_step(self, batch, batch_nb, *args):
+        coords_mask = get_freq_reg_mask(pos_enc_length=32, current_iter=self.global_step, total_reg_iter=hparams.num_epochs * 1000).cuda()
+        viewdirs_mask = get_freq_reg_mask(pos_enc_length=16, current_iter=self.global_step, total_reg_iter=hparams.num_epochs * 1000).cuda()
+        mask = None
+        if hparams.freenerf_mask:
+            mask = (coords_mask, viewdirs_mask)
+        
+        # print(f"Defining masks of shapes: [({coords_mask.shape}), ({viewdirs_mask.shape})]")
         if self.global_step%self.update_interval == 0:
             self.model.update_density_grid(0.01*MAX_SAMPLES/3**0.5,
                                            warmup=self.global_step<self.warmup_steps,
@@ -275,10 +297,10 @@ class NeRFSystem(LightningModule):
 
         if self.hparams.clipnerf_text is not None:
             # TODO: generate random poses + training poses
-            results = self(batch, split='train', detach_geometry=True)
+            results = self(batch, split='train', detach_geometry=True, mask=mask)  # mask = (coords_mas, view_dirs_mask)
             loss_d = self.calculate_clip_loss(results, batch)
         else:
-            results = self(batch, split='train')
+            results = self(batch, split='train', mask=mask)
             loss_d = self.loss(results, batch)
 
             if self.global_step % (2*self.update_interval) == 0 and self.hparams.clipnerf_text is None:
@@ -346,8 +368,8 @@ class NeRFSystem(LightningModule):
             rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
             rgb_pred = (rgb_pred*255).astype(np.uint8)
             depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
+            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_{self.hparams.clipnerf_text}.png'), rgb_pred)
+            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_{self.hparams.clipnerf_text}_d.png'), depth)
 
             # visualize PCA feature
             with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.float32):
@@ -365,13 +387,13 @@ class NeRFSystem(LightningModule):
 
                 visfeat = rearrange(lowrank.cpu().numpy(), '(h w) c -> h w c', h=h)
                 visfeat = (visfeat*255).astype(np.uint8)
-                imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_f.png'), visfeat)
+                imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_{self.hparams.clipnerf_text}_f.png'), visfeat)
 
-            rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
-            rgb_pred = (rgb_pred*255).astype(np.uint8)
-            depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
+            # rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
+            # rgb_pred = (rgb_pred*255).astype(np.uint8)
+            # depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
+            # imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
+            # imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
 
         return logs
 
@@ -398,6 +420,7 @@ class NeRFSystem(LightningModule):
 
 if __name__ == '__main__':
     hparams = get_opts()
+    set_random_seed_for_everything(0)
     if hparams.val_only and (not hparams.ckpt_path):
         raise ValueError('You need to provide a @ckpt_path for validation!')
     system = NeRFSystem(hparams)

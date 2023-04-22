@@ -21,6 +21,7 @@ class FolderLoader(enc_ds.ADE20KSegmentation):#(torch.utils.data.Dataset):
         self.root = root
         self.transform = transform
         self.images = get_folder_images(root)
+        # print(os.listdir(root))
         if len(self.images) == 0:
             raise(RuntimeError("Found 0 images in subfolders of: \
                 " + self.root + "\n"))
@@ -38,7 +39,7 @@ class FolderLoader(enc_ds.ADE20KSegmentation):#(torch.utils.data.Dataset):
 
 def get_folder_images(img_folder):
     img_paths = []
-    glist = list(glob.glob(img_folder.rstrip("/") + '/*.png')) + list(glob.glob(img_folder.rstrip("/") + '/*.jpg'))
+    glist = list(glob.glob(img_folder.rstrip("/") + '/*.png')) + list(glob.glob(img_folder.rstrip("/") + '/*.jpg')) + list(glob.glob(img_folder.rstrip("/") + '/*.JPG')) + list(glob.glob(img_folder.rstrip("/") + '/*.PNG'))
     return list(sorted(glist))
 
 

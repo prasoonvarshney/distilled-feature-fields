@@ -191,7 +191,7 @@ class NGP(nn.Module):
         else:
             self.feature_encoder = None
 
-    def density(self, x, return_feat=False):
+    def density(self, x, mask=None, return_feat=False):
         """
         Inputs:
             x: (N, 3) xyz in [-scale, scale]
@@ -200,13 +200,24 @@ class NGP(nn.Module):
         Outputs:
             sigmas: (N)
         """
+        N = x.shape[0]
         x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
         if self.use_smooth_encoding:
             h = self.xyz_encoder(torch.cat([x, x], dim=-1))
         else:
             h = self.xyz_encoder(x)
+        
+        if mask is not None:
+            # print(f"Calculating density func\nh.shape = {h.shape}, x.shape = {x.shape}, mask.shape = {mask.shape}")
+            tiled_mask = mask.tile((N, 1))
+            # print(f"Tiled mask.shape = {tiled_mask.shape}")
+            h = h * tiled_mask
+
+        # print(h.shape)
         sigmas = TruncExp.apply(h[:, 0])
-        if return_feat: return sigmas, h
+        # print(sigmas.shape)
+        if return_feat: 
+            return sigmas, h
         return sigmas
 
     def log_radiance_to_rgb(self, log_radiances, **kwargs):
@@ -232,7 +243,7 @@ class NGP(nn.Module):
         rgbs = torch.cat(out, 1)
         return rgbs
 
-    def forward(self, x, d, **kwargs):
+    def forward(self, x, d, mask=None, **kwargs):
         """
         Inputs:
             x: (N, 3) xyz in [-scale, scale]
@@ -242,7 +253,11 @@ class NGP(nn.Module):
             sigmas: (N)
             rgbs: (N, 3)
         """
-        sigmas, h = self.density(x, return_feat=True)
+        freq_mask = mask
+        coords_mask, viewdirs_mask = None, None
+        if freq_mask is not None:
+            coords_mask, viewdirs_mask = freq_mask
+        sigmas, h = self.density(x, mask=coords_mask, return_feat=True)
         if kwargs.get('detach_geometry', False):
             sigmas = sigmas.detach()
             h = h.detach()
@@ -256,6 +271,12 @@ class NGP(nn.Module):
             # h = h.detach() * 0.999 + h * 0.001
         d = d/torch.norm(d, dim=1, keepdim=True)
         d = self.dir_encoder((d+1)/2)
+        # print(f"Calculating viewdirs func\nd.shape = {d.shape}")
+
+        if viewdirs_mask is not None:
+            d = d * viewdirs_mask.tile((d.shape[0], 1))
+            # print(f"Calculating viewdirs func\nd.shape = {d.shape}, viewdirs_mask.shape = {viewdirs_mask.shape}")
+
         rgbs = self.rgb_net(torch.cat([d, h], 1))
 
         if self.use_smooth_encoding:

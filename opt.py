@@ -78,4 +78,7 @@ def get_opts():
     parser.add_argument('--clipnerf_filter_text', nargs='*', type=str, default=None)
     parser.add_argument('--clipnerf_patch_size', type=int, default=64)
 
+    parser.add_argument('--freenerf_mask', action='store_true', default=False,
+                        help='whether to enable frequency regularization')
+
     return parser.parse_args()
