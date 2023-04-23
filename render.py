@@ -68,10 +68,18 @@ if __name__ == "__main__":
         edit_dict = {}
 
     # dataset
+    llff_view = True  # True for NeRFy datasets. apple, banana need 360 view (i.e. False)
+
+    split="test_traj_fixed"
+    fps=15
+    if llff_view:
+        split="llff"
+        fps=15
+
     dataset = dataset_dict[hparams.dataset_name](
         hparams.root_dir,
-        # split="test",
-        split="test_traj_fixed",
+        split=split,
+        # split="test_traj_fixed",
         downsample=hparams.downsample,
     )
 
@@ -83,9 +91,9 @@ if __name__ == "__main__":
             f"""__target_{"-".join([str(x) for x in edit_config["query"]["positive_ids"]])}"""
         )
 
-    output_directory = "./renders/default"
+    output_directory = f"./renders/default/{hparams.exp_name}"
     if hparams.freenerf_mask:
-        output_directory = "./renders/freenerf"
+        output_directory = f"./renders/freenerf/{hparams.exp_name}"
     os.makedirs(output_directory, exist_ok=True)
 
     output_file_name = f"cliptext_{hparams.clipnerf_text}{edit_description}.gif"
@@ -103,4 +111,4 @@ if __name__ == "__main__":
         image = results["rgb"].reshape(h, w, 3)
         image = (image.cpu().numpy() * 255).astype(np.uint8)
         images.append(image)
-    imageio.mimsave(os.path.join(output_directory, output_file_name), images, fps=15)  # TODO: cv2
+    imageio.mimsave(os.path.join(output_directory, output_file_name), images, fps=fps)  # TODO: cv2

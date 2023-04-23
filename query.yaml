@@ -1,6 +1,6 @@
 query:
   query_type: "text"
-  texts: ["apple", "banana", "vegetables", "floor"]
+  texts: ["flower", "leaves", "ground"]
   positive_ids: [0] # indices of target texts
   score_threshold: # empty means None. use argmax.
 

@@ -3,6 +3,7 @@ from .custom_functions import \
     RayAABBIntersector, RayMarcher, VolumeRenderer
 from einops import rearrange
 import vren
+from utils import lossfun_occ_reg
 
 MAX_SAMPLES = 1024
 NEAR_DISTANCE = 0.01
@@ -134,6 +135,9 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, mask=None, **kwargs):
             N_eff_samples, opacity, depth, rgb)
         alive_indices = alive_indices[alive_indices>=0] # remove converged rays
 
+    occ_reg = lossfun_occ_reg(rgb, sigmas)
+    results['occ_reg'] = occ_reg
+
     results['opacity'] = opacity
     results['depth'] = depth
     results['rgb'] = rgb
@@ -204,5 +208,8 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, mask=None, **kwargs):
             rgb_bg = torch.zeros(3, device=rays_o.device)
     results['rgb'] = results['rgb'] + \
                      rgb_bg*rearrange(1-results['opacity'], 'n -> n 1')
+
+    occ_reg = lossfun_occ_reg(results['rgb'], sigmas)
+    results['occ_reg'] = occ_reg
 
     return results
